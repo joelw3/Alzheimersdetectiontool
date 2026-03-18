@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Patient Information{% endblock %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-content: center; min-height: 80vh;">
+    <div style="max-width: 48rem; width: 100%;">
+        <div class="card">
+            <div class="mb-8">
+                <div class="icon">👤</div>
+                <h1 class="text-center" style="color: #1f2937;">Participant Information</h1>
+                <p class="text-center" style="font-size: 1.25rem; color: #6b7280;">
+                    Please provide the following details to begin
+                </p>
+            </div>
+
+            <form method="POST" action="{{ url_for('patient_info') }}">
+                <div style="margin-bottom: 1.5rem;">
+                    <label for="name" style="display: block; font-size: 1.25rem; font-weight: 600; color: #374151; margin-bottom: 0.75rem;">
+                        Full Name *
+                    </label>
+                    <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        required
+                        style="width: 100%; padding: 1rem 1.25rem; font-size: 1.25rem; border: 2px solid #d1d5db; border-radius: 0.5rem; outline: none;"
+                        onfocus="this.style.borderColor='#4f46e5'"
+                        onblur="this.style.borderColor='#d1d5db'"
+                        placeholder="Enter participant's full name"
+                    />
+                </div>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <label for="age" style="display: block; font-size: 1.25rem; font-weight: 600; color: #374151; margin-bottom: 0.75rem;">
+                        Age *
+                    </label>
+                    <input
+                        type="number"
+                        id="age"
+                        name="age"
+                        min="65"
+                        max="120"
+                        required
+                        style="width: 100%; padding: 1rem 1.25rem; font-size: 1.25rem; border: 2px solid #d1d5db; border-radius: 0.5rem; outline: none;"
+                        onfocus="this.style.borderColor='#4f46e5'"
+                        onblur="this.style.borderColor='#d1d5db'"
+                        placeholder="Must be 65 or older"
+                    />
+                    <p id="age-warning" style="margin-top: 0.5rem; font-size: 1.125rem; color: #dc2626; display: none;">
+                        This assessment is designed for individuals aged 65 and older.
+                    </p>
+                </div>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <label for="date_of_birth" style="display: block; font-size: 1.25rem; font-weight: 600; color: #374151; margin-bottom: 0.75rem;">
+                        Date of Birth (Optional)
+                    </label>
+                    <input
+                        type="date"
+                        id="date_of_birth"
+                        name="date_of_birth"
+                        style="width: 100%; padding: 1rem 1.25rem; font-size: 1.25rem; border: 2px solid #d1d5db; border-radius: 0.5rem; outline: none;"
+                        onfocus="this.style.borderColor='#4f46e5'"
+                        onblur="this.style.borderColor='#d1d5db'"
+                    />
+                </div>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <label for="test_date" style="display: block; font-size: 1.25rem; font-weight: 600; color: #374151; margin-bottom: 0.75rem;">
+                        📅 Assessment Date
+                    </label>
+                    <input
+                        type="date"
+                        id="test_date"
+                        name="test_date"
+                        required
+                        value="{{ now.strftime('%Y-%m-%d') }}"
+                        style="width: 100%; padding: 1rem 1.25rem; font-size: 1.25rem; border: 2px solid #d1d5db; border-radius: 0.5rem; outline: none;"
+                        onfocus="this.style.borderColor='#4f46e5'"
+                        onblur="this.style.borderColor='#d1d5db'"
+                    />
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; padding-top: 1.5rem;">
+                    <a href="{{ url_for('home') }}" class="btn btn-secondary">
+                        ← Back
+                    </a>
+                    <button type="submit" class="btn btn-primary" id="submit-btn">
+                        Continue →
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const ageInput = document.getElementById('age');
+    const ageWarning = document.getElementById('age-warning');
+    const submitBtn = document.getElementById('submit-btn');
+    
+    ageInput.addEventListener('input', function() {
+        const age = parseInt(this.value);
+        if (age && age < 65) {
+            ageWarning.style.display = 'block';
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.5';
+            submitBtn.style.cursor = 'not-allowed';
+        } else {
+            ageWarning.style.display = 'none';
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.cursor = 'pointer';
+        }
+    });
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Set today's date as default
+    document.getElementById('test_date').valueAsDate = new Date();
+</script>
+{% endblock %}

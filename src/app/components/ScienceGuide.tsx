@@ -38,7 +38,7 @@ export function ScienceGuide() {
             The <strong>recall decay score</strong> - the difference between
             immediate and delayed recall - is a critical indicator. In healthy
             aging, some memory loss over time is normal. However, excessive decay
-            (typically &gt;30%) suggests impaired memory consolidation, a hallmark
+            (typically &gt;30%) suggests impaired memory consolidation, a sign
             of Alzheimer's disease.
           </p>
           <p className="text-lg text-gray-700 leading-relaxed">
@@ -95,14 +95,14 @@ export function ScienceGuide() {
             <div className="flex items-start">
               <strong className="min-w-32">Similarity:</strong>
               <span>
-                Assesses gist memory and ability to convey the story's overall
+                Assesses memory and ability to convey the story's overall
                 meaning
               </span>
             </div>
             <div className="flex items-start">
               <strong className="min-w-32">Coherence:</strong>
               <span>
-                Evaluates narrative structure and linguistic organization
+                Evaluates audio recording of patient's voice and draws correlation using speech digital biomarkers
               </span>
             </div>
           </div>

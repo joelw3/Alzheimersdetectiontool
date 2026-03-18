@@ -13,9 +13,8 @@ export function AIInfoPanel() {
       </div>
 
       <p className="text-lg text-gray-700 mb-6 leading-relaxed">
-        This assessment uses advanced artificial intelligence to analyze speech
-        patterns and memory recall, identifying early indicators of cognitive
-        decline.
+        This is an assessment that can be used by doctors that advanced artificial intelligence to analyze speech
+        patterns and memory recall, identifying early indicators of cognitive decline.
       </p>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -74,11 +73,10 @@ export function AIInfoPanel() {
 
       <div className="mt-6 bg-purple-100 border border-purple-300 rounded-lg p-4">
         <p className="text-purple-900 font-medium">
-          <strong>ML Enhancement Opportunity:</strong> This system can be
-          enhanced with machine learning models trained on validated clinical
-          datasets to improve accuracy and predictive power. Consider integrating
-          models like BERT for semantic analysis or custom neural networks
-          trained on Alzheimer's speech data.
+          <strong>ML Enhancement :</strong> This system would be much more reliable/would be
+          enhanced with machine learning models trained on clinical
+          datasets to improve the accuracy and predictive power. Custom neural networks
+          trained on Alzheimer's speech data could be used.
         </p>
       </div>
     </div>

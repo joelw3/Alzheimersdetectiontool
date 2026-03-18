@@ -72,9 +72,8 @@ export function Home() {
 
           <div className="bg-amber-50 border border-amber-200 p-6 rounded-lg mb-8">
             <p className="text-lg text-amber-900 font-medium">
-              ⚠️ Important: This tool is for screening purposes only and does not
-              replace professional medical diagnosis. Please consult with a
-              healthcare provider for comprehensive evaluation.
+              ⚠️ Important: This tool is not final say! Please have a doctor to analyze 
+              the results as well to verify its accuracy. 
             </p>
           </div>
 

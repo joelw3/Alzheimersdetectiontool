@@ -113,7 +113,7 @@ export function ImmediateRecall() {
         <div className="bg-blue-50 border-2 border-blue-200 p-6 rounded-xl mb-8">
           <p className="text-lg text-blue-900 font-medium text-center">
             Please retell the story you just heard in as much detail as you can
-            remember. Don't worry about getting every word exactly right - just
+            remember. Don't worry about getting the wording perfectly - just
             recall what you can.
           </p>
         </div>
@@ -121,7 +121,9 @@ export function ImmediateRecall() {
         {micPermission === false && (
           <div className="bg-amber-50 border border-amber-200 p-6 rounded-lg mb-6">
             <p className="text-lg text-amber-900 font-medium">
-              ⚠️ Microphone access was denied. You can type your response instead.
+              ⚠️ Microphone access was denied. You can type your response instead. 
+              However, voice biomarker analysis will not occur and accuracy of results 
+              will suffer. 
             </p>
           </div>
         )}
@@ -160,7 +162,8 @@ export function ImmediateRecall() {
                 onClick={() => setUseTextInput(true)}
                 className="mt-4 text-indigo-600 hover:text-indigo-800 font-medium text-lg underline"
               >
-                Or type your response instead
+                Or type your response instead - voice biomarker analysis will not occur and accuracy of results 
+              will suffer. 
               </button>
             </div>
           )}

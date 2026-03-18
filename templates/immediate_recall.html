@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Immediate Recall{% endblock %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-center; min-height: 80vh;">
+    <div style="max-width: 64rem; width: 100%;">
+        <div class="card">
+            <div class="text-center mb-8">
+                <div class="icon">🎤</div>
+                <h1 style="color: #1f2937;">Immediate Recall</h1>
+                <p style="font-size: 1.25rem; color: #6b7280;">
+                    Tell us what you remember from the story
+                </p>
+            </div>
+
+            <div class="alert alert-info mb-8">
+                <p style="font-size: 1.125rem; font-weight: 500; text-align: center;">
+                    Please type the story you just read in as much detail as you can
+                    remember. Don't worry about getting every word exactly right - just
+                    recall what you can.
+                </p>
+            </div>
+
+            <form method="POST" action="{{ url_for('immediate_recall') }}" id="recall-form">
+                <div style="margin-bottom: 1.5rem;">
+                    <label for="recall_text" style="display: block; font-size: 1.25rem; font-weight: 600; color: #374151; margin-bottom: 0.75rem;">
+                        Type Your Response:
+                    </label>
+                    <textarea
+                        id="recall_text"
+                        name="recall_text"
+                        required
+                        minlength="10"
+                        rows="12"
+                        style="width: 100%; padding: 1rem 1.25rem; font-size: 1.125rem; border: 2px solid #d1d5db; border-radius: 0.5rem; outline: none; font-family: inherit; resize: vertical;"
+                        onfocus="this.style.borderColor='#10b981'"
+                        onblur="this.style.borderColor='#d1d5db'"
+                        placeholder="Type what you remember from the story..."
+                    ></textarea>
+                    <p style="margin-top: 0.5rem; font-size: 0.875rem; color: #6b7280;">
+                        Word count: <span id="word-count">0</span>
+                    </p>
+                </div>
+
+                <div style="background: #f9fafb; padding: 1.5rem; border-radius: 0.75rem; margin-bottom: 2rem;">
+                    <h3 style="font-size: 1.125rem; font-weight: 700; color: #1f2937; margin-bottom: 0.75rem;">
+                        💡 Tips for Recall
+                    </h3>
+                    <ul style="list-style: none; padding: 0;">
+                        <li style="margin-bottom: 0.5rem; font-size: 1.125rem; color: #374151;">
+                            • Start from the beginning and go chronologically
+                        </li>
+                        <li style="margin-bottom: 0.5rem; font-size: 1.125rem; color: #374151;">
+                            • Include names, numbers, and specific details
+                        </li>
+                        <li style="margin-bottom: 0.5rem; font-size: 1.125rem; color: #374151;">
+                            • Don't worry if you can't remember everything
+                        </li>
+                        <li style="font-size: 1.125rem; color: #374151;">
+                            • Take your time and think clearly
+                        </li>
+                    </ul>
+                </div>
+
+                <button type="submit" class="btn btn-primary" id="submit-btn" style="width: 100%; font-size: 1.25rem; padding: 1.5rem;">
+                    Continue to Delay Period →
+                </button>
+
+                <p id="min-words-msg" style="text-align: center; color: #6b7280; margin-top: 1rem; font-size: 1.125rem; display: none;">
+                    Please provide a response to continue
+                </p>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    const textarea = document.getElementById('recall_text');
+    const wordCountSpan = document.getElementById('word-count');
+    const submitBtn = document.getElementById('submit-btn');
+    const minWordsMsg = document.getElementById('min-words-msg');
+    
+    textarea.addEventListener('input', function() {
+        const text = this.value.trim();
+        const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
+        wordCountSpan.textContent = wordCount;
+        
+        if (wordCount < 3) {
+            submitBtn.disabled = true;
+            submitBtn.style.opacity = '0.5';
+            submitBtn.style.cursor = 'not-allowed';
+            minWordsMsg.style.display = 'block';
+        } else {
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            submitBtn.style.cursor = 'pointer';
+            minWordsMsg.style.display = 'none';
+        }
+    });
+    
+    // Initial check
+    textarea.dispatchEvent(new Event('input'));
+</script>
+{% endblock %}

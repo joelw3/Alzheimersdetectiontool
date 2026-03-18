@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}Delayed Recall{% endblock %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-center; min-height: 80vh;">
+    <div style="max-width: 48rem; width: 100%;">
+        <div class="card">
+            <div class="text-center mb-8">
+                <div class="icon">⏰</div>
+                <h1 style="color: #1f2937;">Brief Waiting Period</h1>
+                <p style="font-size: 1.25rem; color: #6b7280;">
+                    Please wait while we prepare the next phase
+                </p>
+            </div>
+
+            <div style="background: linear-gradient(135deg, #f3e8ff 0%, #e9d5ff 100%); padding: 3rem; border-radius: 1rem; margin-bottom: 2rem; text-align: center;">
+                <div id="timer" style="font-size: 5rem; font-weight: 700; color: #7c3aed; margin-bottom: 1rem;">
+                    3:00
+                </div>
+                <p style="font-size: 1.5rem; color: #6b21a8; font-weight: 500;">
+                    Time Remaining
+                </p>
+            </div>
+
+            <div class="alert alert-info">
+                <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 0.75rem;">
+                    During This Time
+                </h3>
+                <ul style="list-style: none; padding: 0;">
+                    <li style="margin-bottom: 0.5rem; font-size: 1.125rem;">• Stay on this page</li>
+                    <li style="margin-bottom: 0.5rem; font-size: 1.125rem;">• Try to relax and clear your mind</li>
+                    <li style="margin-bottom: 0.5rem; font-size: 1.125rem;">• Do NOT try to rehearse or think about the story</li>
+                    <li style="font-size: 1.125rem;">• You'll be prompted when the time is up</li>
+                </ul>
+            </div>
+
+            <div id="recall-form" style="display: none;">
+                <h2 class="text-center" style="color: #1f2937; margin-top: 2rem; margin-bottom: 1rem;">
+                    Now, please recall the story again
+                </h2>
+                
+                <div class="alert alert-warning mb-8">
+                    <p style="font-size: 1.125rem; font-weight: 500; text-align: center;">
+                        Please type the story again, recalling as much as you can. It's
+                        normal to remember less than the first time - just do your best.
+                    </p>
+                </div>
+
+                <form method="POST" action="{{ url_for('delayed_recall') }}">
+                    <div style="margin-bottom: 1.5rem;">
+                        <label for="recall_text" style="display: block; font-size: 1.25rem; font-weight: 600; color: #374151; margin-bottom: 0.75rem;">
+                            Type Your Response:
+                        </label>
+                        <textarea
+                            id="recall_text"
+                            name="recall_text"
+                            required
+                            minlength="10"
+                            rows="12"
+                            style="width: 100%; padding: 1rem 1.25rem; font-size: 1.125rem; border: 2px solid #d1d5db; border-radius: 0.5rem; outline: none; font-family: inherit; resize: vertical;"
+                            onfocus="this.style.borderColor='#f97316'"
+                            onblur="this.style.borderColor='#d1d5db'"
+                            placeholder="Type what you remember from the story..."
+                        ></textarea>
+                        <p style="margin-top: 0.5rem; font-size: 0.875rem; color: #6b7280;">
+                            Word count: <span id="word-count">0</span>
+                        </p>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary" id="submit-btn" style="width: 100%; font-size: 1.25rem; padding: 1.5rem;">
+                        View Results →
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let timeRemaining = {{ delay_duration }};  // in seconds
+    const timerDisplay = document.getElementById('timer');
+    const recallForm = document.getElementById('recall-form');
+    
+    function formatTime(seconds) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    }
+    
+    const countdown = setInterval(function() {
+        timeRemaining--;
+        timerDisplay.textContent = formatTime(timeRemaining);
+        
+        if (timeRemaining <= 0) {
+            clearInterval(countdown);
+            document.querySelector('.icon').textContent = '🎤';
+            document.querySelector('h1').textContent = 'Delayed Recall';
+            document.querySelector('.text-center p').textContent = 'Now tell us what you remember';
+            document.getElementById('timer').parentElement.style.display = 'none';
+            document.querySelector('.alert').style.display = 'none';
+            recallForm.style.display = 'block';
+        }
+    }, 1000);
+    
+    // Word count functionality
+    setTimeout(function() {
+        const textarea = document.getElementById('recall_text');
+        const wordCountSpan = document.getElementById('word-count');
+        const submitBtn = document.getElementById('submit-btn');
+        
+        if (textarea) {
+            textarea.addEventListener('input', function() {
+                const text = this.value.trim();
+                const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
+                wordCountSpan.textContent = wordCount;
+                
+                if (wordCount < 3) {
+                    submitBtn.disabled = true;
+                    submitBtn.style.opacity = '0.5';
+                    submitBtn.style.cursor = 'not-allowed';
+                } else {
+                    submitBtn.disabled = false;
+                    submitBtn.style.opacity = '1';
+                    submitBtn.style.cursor = 'pointer';
+                }
+            });
+        }
+    }, {{ delay_duration }} * 1000);
+</script>
+{% endblock %}
