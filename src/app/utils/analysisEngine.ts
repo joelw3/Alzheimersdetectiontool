@@ -1,6 +1,6 @@
-
 import { STORY_KEY_POINTS, STORY_TEXT } from "./storyData";
 import type { AcousticFeatures } from "./speechPipeline";
+import { classifyRisk as classifyRiskGNB, type ClassifierFeatures, type ClassifierResult } from "./classifierEngine";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,6 +14,16 @@ export interface AnalysisResult {
   detailsMissed: string[];
   riskLevel: "Low" | "Moderate" | "High";
   recommendations: string[];
+}
+
+export interface ClassificationOutput {
+  riskLevel: "Low" | "Moderate" | "High";
+  probabilities: { Low: number; Moderate: number; High: number };
+  confidence: number;
+  imputedFeatures: string[];
+  featureContributions: ClassifierResult["featureContributions"];
+  /** true = Gaussian NB from training distributions; false = Supabase XGBoost */
+  source: "gnb-training-distributions" | "supabase-xgboost";
 }
 
 // ─── 1. Levenshtein distance ──────────────────────────────────────────────────
@@ -151,89 +161,6 @@ function getRecommendations(risk: "Low" | "Moderate" | "High"): string[] {
   ];
 }
 
-// ─── 6. XGBoost prediction ────────────────────────────────────────────────────
-//
-// Calls the Supabase Edge Function that runs xgboost_model.tsx.
-// Returns null (triggering the rule-based fallback above) if:
-//   - VITE_SUPABASE_PROJECT_ID or VITE_SUPABASE_ANON_KEY are not set
-//   - The endpoint is unreachable
-//   - The model has not yet been deployed
-//
-// Add to your .env file:
-//   VITE_SUPABASE_PROJECT_ID=your-project-id
-//   VITE_SUPABASE_ANON_KEY=your-anon-key
-
-async function getXGBoostPrediction(
-  immediateScore: number,
-  delayedScore: number,
-  recallDecay: number,
-  immediateKP: number,
-  delayedKP: number,
-  immSimilarity: number,
-  delSimilarity: number,
-  immCoherence: number,
-  delCoherence: number
-): Promise<"Low" | "Moderate" | "High" | null> {
-  const projectId    = import.meta.env.VITE_SUPABASE_PROJECT_ID as string | undefined;
-  const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
-
-  if (!projectId || !publicAnonKey) {
-    // Environment variables not configured — skip XGBoost, use rule-based fallback
-    return null;
-  }
-
-  try {
-    const rawAcoustics = sessionStorage.getItem("delayedAcoustics");
-    const acoustics: Partial<AcousticFeatures> = rawAcoustics
-      ? JSON.parse(rawAcoustics)
-      : {};
-
-    const features = {
-      pauseCount:         acoustics.pauseCount        ?? null,
-      meanPauseDuration:  acoustics.meanPauseDuration ?? null,
-      speechRate:         acoustics.speechRate        ?? null,
-      lexicalDiversity:   acoustics.lexicalDiversity  ?? null,
-      wordsPerMinute:     acoustics.wordsPerMinute    ?? null,
-      immediateScore,
-      delayedScore,
-      recallDecay,
-      keyPointsRecalled:  delayedKP,
-      semanticSimilarity: delSimilarity,
-      coherenceScore:     delCoherence,
-    };
-
-    const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-57b7b6f3/predict-risk`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${publicAnonKey}`,
-        },
-        body: JSON.stringify(features),
-      }
-    );
-
-    if (!response.ok) {
-      console.warn("XGBoost endpoint returned", response.status, "— using rule-based fallback");
-      return null;
-    }
-
-    const data = await response.json();
-
-    if (data.success && data.prediction?.risk_level) {
-      // Cache the full prediction for the Results page to display
-      sessionStorage.setItem("xgboostPrediction", JSON.stringify(data.prediction));
-      return data.prediction.risk_level as "Low" | "Moderate" | "High";
-    }
-
-    return null;
-  } catch (error) {
-    console.warn("XGBoost prediction failed — using rule-based fallback:", error);
-    return null;
-  }
-}
-
 // ─── 7. Main export ───────────────────────────────────────────────────────────
 
 export async function analyzeRecall(
@@ -246,8 +173,9 @@ export async function analyzeRecall(
     recallDecay: number;
     concernLevel: "Low" | "Moderate" | "High";
   };
+  classification: ClassificationOutput;
 }> {
-  // Score immediate recall
+  // ── 1. Score immediate recall ────────────────────────────────────────────
   const immediateKP   = checkKeyPoints(immediateRecall);
   const immSimilarity = calculateSimilarity(STORY_TEXT, immediateRecall);
   const immCoherence  = calculateCoherence(immediateRecall);
@@ -256,7 +184,7 @@ export async function analyzeRecall(
     (immSimilarity / 100) * 30 +
     (immCoherence / 100) * 30;
 
-  // Score delayed recall
+  // ── 2. Score delayed recall ──────────────────────────────────────────────
   const delayedKP     = checkKeyPoints(delayedRecall);
   const delSimilarity = calculateSimilarity(STORY_TEXT, delayedRecall);
   const delCoherence  = calculateCoherence(delayedRecall);
@@ -267,27 +195,91 @@ export async function analyzeRecall(
 
   const recallDecay = immediateScore - delayedScore;
 
-  // Rule-based classification (always computed as fallback)
-  const immediateRisk = classifyRisk(immediateScore, immediateScore, 0);
-  const delayedRisk   = classifyRisk(immediateScore, delayedScore, recallDecay);
-  let   concernLevel  = classifyRisk(immediateScore, delayedScore, recallDecay);
+  // ── 3. Pull real acoustic features from the user's recording ────────────
+  // These are written to sessionStorage by speechPipeline after each recording.
+  // Null values are imputed inside classifierEngine using training-set medians.
+  const rawDelayedAcoustics: Partial<AcousticFeatures> = (() => {
+    try { return JSON.parse(sessionStorage.getItem("delayedAcoustics") ?? "{}"); }
+    catch { return {}; }
+  })();
+  const rawImmediateAcoustics: Partial<AcousticFeatures> = (() => {
+    try { return JSON.parse(sessionStorage.getItem("immediateAcoustics") ?? "{}"); }
+    catch { return {}; }
+  })();
 
-  // XGBoost prediction — overrides rule-based if the endpoint responds
-  const xgboostPrediction = await getXGBoostPrediction(
+  // Use delayed acoustics as primary (more clinically significant);
+  // fall back to immediate if delayed is unavailable.
+  const acoustics = {
+    pauseCount:        rawDelayedAcoustics.pauseCount        ?? rawImmediateAcoustics.pauseCount        ?? null,
+    meanPauseDuration: rawDelayedAcoustics.meanPauseDuration ?? rawImmediateAcoustics.meanPauseDuration ?? null,
+    speechRate:        rawDelayedAcoustics.speechRate        ?? rawImmediateAcoustics.speechRate        ?? null,
+    lexicalDiversity:  rawDelayedAcoustics.lexicalDiversity  ?? rawImmediateAcoustics.lexicalDiversity  ?? null,
+    wordsPerMinute:    rawDelayedAcoustics.wordsPerMinute    ?? rawImmediateAcoustics.wordsPerMinute    ?? null,
+  };
+
+  // ── 4. Run Gaussian NB classifier against training distributions ─────────
+  // This always runs client-side — no API key or Supabase config needed.
+  const classifierFeatures: ClassifierFeatures = {
+    ...acoustics,
     immediateScore,
     delayedScore,
     recallDecay,
-    immediateKP.recalled.length,
-    delayedKP.recalled.length,
-    immSimilarity,
-    delSimilarity,
-    immCoherence,
-    delCoherence
-  );
+    keyPointsRecalled:  delayedKP.recalled.length,
+    semanticSimilarity: delSimilarity,
+    coherenceScore:     delCoherence,
+  };
 
-  if (xgboostPrediction) {
-    concernLevel = xgboostPrediction;
+  let gnbResult = classifyRiskGNB(classifierFeatures);
+
+  // ── 5. Try Supabase XGBoost — overrides GNB only if it succeeds ─────────
+  let classificationSource: ClassificationOutput["source"] = "gnb-training-distributions";
+
+  const projectId     = (import.meta.env.VITE_SUPABASE_PROJECT_ID as string | undefined);
+  const publicAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY   as string | undefined);
+
+  if (projectId && publicAnonKey) {
+    try {
+      const resp = await fetch(
+        `https://${projectId}.supabase.co/functions/v1/make-server-57b7b6f3/predict-risk`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${publicAnonKey}`,
+          },
+          body: JSON.stringify({ ...classifierFeatures }),
+        }
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.success && data.prediction?.risk_level) {
+          sessionStorage.setItem("xgboostPrediction", JSON.stringify(data.prediction));
+          // Supabase responded — use its risk level but keep GNB probabilities
+          gnbResult = { ...gnbResult, riskLevel: data.prediction.risk_level };
+          classificationSource = "supabase-xgboost";
+        }
+      }
+    } catch {
+      // Supabase unreachable — GNB result stands
+    }
   }
+
+  // Persist full classifier output for Results page
+  const classification: ClassificationOutput = {
+    riskLevel:            gnbResult.riskLevel,
+    probabilities:        gnbResult.probabilities,
+    confidence:           gnbResult.confidence,
+    imputedFeatures:      gnbResult.imputedFeatures,
+    featureContributions: gnbResult.featureContributions,
+    source:               classificationSource,
+  };
+  sessionStorage.setItem("classificationOutput", JSON.stringify(classification));
+
+  const concernLevel = gnbResult.riskLevel;
+
+  // ── 6. Per-phase risk (rule-based, for individual card display) ──────────
+  const immediateRisk = classifyRisk(immediateScore, immediateScore, 0);
+  const delayedRisk   = gnbResult.riskLevel; // use classifier for the final card
 
   return {
     immediate: {
@@ -316,5 +308,6 @@ export async function analyzeRecall(
       recallDecay,
       concernLevel,
     },
+    classification,
   };
 }
