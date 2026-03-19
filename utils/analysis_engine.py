@@ -1,72 +1,74 @@
-"""
-AI Analysis Engine for Alzheimer's Early Detection
-Analyzes story recall using NLP techniques
-"""
 
 from typing import Dict, List, Tuple
 from utils.story_data import STORY_KEY_POINTS, STORY_TEXT
 
+# 🔥 NEW: Machine Learning imports
+from sklearn.tree import DecisionTreeClassifier
+import numpy as np
+
+
+# Features:
+# [immediate_score, delayed_score, recall_decay, similarity, coherence]
+X = np.array([
+    [85, 80, 5, 0.9, 0.85],
+    [70, 60, 10, 0.75, 0.7],
+    [50, 40, 20, 0.6, 0.55],
+    [30, 25, 25, 0.4, 0.45],
+    [90, 85, 3, 0.95, 0.9],
+    [60, 50, 15, 0.65, 0.6],
+])
+
+# Labels: 0=Low, 1=Moderate, 2=High
+y = np.array([0, 1, 2, 2, 0, 1])
+
+model = DecisionTreeClassifier()
+model.fit(X, y)
+
+labels = ["Low", "Moderate", "High"]
+
+
+
 
 def levenshtein_distance(str1: str, str2: str) -> int:
-    """
-    Calculate Levenshtein distance between two strings
-    Returns the minimum number of edits needed to transform str1 into str2
-    """
     len1 = len(str1)
     len2 = len(str2)
     
-    # Create matrix
     matrix = [[0] * (len2 + 1) for _ in range(len1 + 1)]
     
-    # Initialize first column and row
     for i in range(len1 + 1):
         matrix[i][0] = i
     for j in range(len2 + 1):
         matrix[0][j] = j
     
-    # Fill the matrix
     for i in range(1, len1 + 1):
         for j in range(1, len2 + 1):
             cost = 0 if str1[i-1] == str2[j-1] else 1
             matrix[i][j] = min(
-                matrix[i-1][j] + 1,      # deletion
-                matrix[i][j-1] + 1,      # insertion
-                matrix[i-1][j-1] + cost  # substitution
+                matrix[i-1][j] + 1,
+                matrix[i][j-1] + 1,
+                matrix[i-1][j-1] + cost
             )
     
     return matrix[len1][len2]
 
 
 def calculate_similarity(original: str, recalled: str) -> float:
-    """
-    Calculate semantic similarity percentage using Levenshtein distance
-    """
-    distance = levenshtein_distance(
-        original.lower(),
-        recalled.lower()
-    )
+    distance = levenshtein_distance(original.lower(), recalled.lower())
     max_len = max(len(original), len(recalled))
     
     if max_len == 0:
         return 0.0
     
-    similarity = ((max_len - distance) / max_len) * 100
-    return similarity
+    return ((max_len - distance) / max_len) * 100
 
 
 def check_key_points(recalled_text: str) -> Tuple[List[str], List[str]]:
-    """
-    Check which key points from the story were recalled
-    Returns: (recalled_points, missed_points)
-    """
     recalled = []
     missed = []
     lower_recalled = recalled_text.lower()
     
     for point in STORY_KEY_POINTS:
-        lower_point = point.lower()
-        # Check for partial matches (first word of key point)
-        first_word = lower_point.split()[0]
+        first_word = point.lower().split()[0]
         if first_word in lower_recalled:
             recalled.append(point)
         else:
@@ -76,58 +78,27 @@ def check_key_points(recalled_text: str) -> Tuple[List[str], List[str]]:
 
 
 def calculate_coherence(text: str) -> float:
-    """
-    Calculate coherence score based on sentence structure and length
-    """
     if not text or len(text.strip()) < 20:
         return 0.0
     
-    # Split into sentences
     sentences = [s.strip() for s in text.replace('!', '.').replace('?', '.').split('.') if s.strip()]
     
     if not sentences:
         return 0.0
     
-    # Check coherence indicators
-    has_proper_length = len(text) > 50
-    has_multiple_sentences = len(sentences) > 2
-    has_reasonable_word_count = len(text.split()) > 15
-    
     score = 0.0
-    if has_proper_length:
+    
+    if len(text) > 50:
         score += 33.33
-    if has_multiple_sentences:
+    if len(sentences) > 2:
         score += 33.33
-    if has_reasonable_word_count:
+    if len(text.split()) > 15:
         score += 33.34
     
     return score
 
 
-def get_risk_level(score: float, is_delayed: bool = False) -> str:
-    """
-    Determine risk level based on score
-    """
-    if is_delayed:
-        if score >= 60:
-            return "Low"
-        elif score >= 40:
-            return "Moderate"
-        else:
-            return "High"
-    else:
-        if score >= 70:
-            return "Low"
-        elif score >= 50:
-            return "Moderate"
-        else:
-            return "High"
-
-
-def get_recommendations(risk: str, is_delayed: bool) -> List[str]:
-    """
-    Get recommendations based on risk level
-    """
+def get_recommendations(risk: str) -> List[str]:
     if risk == "High":
         return [
             "Consult with a neurologist or geriatric specialist",
@@ -152,47 +123,45 @@ def get_recommendations(risk: str, is_delayed: bool) -> List[str]:
 
 
 def analyze_recall(immediate_recall: str, delayed_recall: str) -> Dict:
-    """
-    Main analysis function that processes both recall attempts
-    Returns comprehensive analysis results
-    """
-    # Analyze immediate recall
+
+    # --- Immediate recall analysis ---
     immediate_key_points = check_key_points(immediate_recall)
     immediate_similarity = calculate_similarity(STORY_TEXT, immediate_recall)
     immediate_coherence = calculate_coherence(immediate_recall)
-    
+
     immediate_score = (
         (len(immediate_key_points[0]) / len(STORY_KEY_POINTS)) * 40 +
         (immediate_similarity / 100) * 30 +
         (immediate_coherence / 100) * 30
     )
-    
-    # Analyze delayed recall
+
+    # --- Delayed recall analysis ---
     delayed_key_points = check_key_points(delayed_recall)
     delayed_similarity = calculate_similarity(STORY_TEXT, delayed_recall)
     delayed_coherence = calculate_coherence(delayed_recall)
-    
+
     delayed_score = (
         (len(delayed_key_points[0]) / len(STORY_KEY_POINTS)) * 40 +
         (delayed_similarity / 100) * 30 +
         (delayed_coherence / 100) * 30
     )
-    
-    # Calculate recall decay
+
+    # --- Recall decay ---
     recall_decay = immediate_score - delayed_score
-    
-    # Determine risk levels
-    immediate_risk = get_risk_level(immediate_score, False)
-    delayed_risk = get_risk_level(delayed_score, True)
-    
-    # Overall concern level based on decay and absolute scores
-    if recall_decay > 30 or delayed_score < 40:
-        concern_level = "High"
-    elif recall_decay > 20 or delayed_score < 60:
-        concern_level = "Moderate"
-    else:
-        concern_level = "Low"
-    
+
+
+    features = [[
+        immediate_score,
+        delayed_score,
+        recall_decay,
+        (immediate_similarity + delayed_similarity) / 200,   # normalize to 0–1
+        (immediate_coherence + delayed_coherence) / 200      # normalize to 0–1
+    ]]
+
+    prediction = model.predict(features)[0]
+    risk_level = labels[prediction]
+
+
     return {
         'immediate': {
             'score': immediate_score,
@@ -202,8 +171,8 @@ def analyze_recall(immediate_recall: str, delayed_recall: str) -> Dict:
             'coherence_score': immediate_coherence,
             'details_recalled': immediate_key_points[0],
             'details_missed': immediate_key_points[1],
-            'risk_level': immediate_risk,
-            'recommendations': get_recommendations(immediate_risk, False)
+            'risk_level': risk_level,
+            'recommendations': get_recommendations(risk_level)
         },
         'delayed': {
             'score': delayed_score,
@@ -213,11 +182,11 @@ def analyze_recall(immediate_recall: str, delayed_recall: str) -> Dict:
             'coherence_score': delayed_coherence,
             'details_recalled': delayed_key_points[0],
             'details_missed': delayed_key_points[1],
-            'risk_level': delayed_risk,
-            'recommendations': get_recommendations(delayed_risk, True)
+            'risk_level': risk_level,
+            'recommendations': get_recommendations(risk_level)
         },
         'comparison': {
             'recall_decay': recall_decay,
-            'concern_level': concern_level
+            'concern_level': risk_level
         }
     }

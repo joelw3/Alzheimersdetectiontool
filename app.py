@@ -1,7 +1,6 @@
-"""
-Alzheimer's Early Detection Tool - Flask Application
-Main application entry point
-"""
+
+//Alzheimer's Early Detection Tool 
+
 
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify
 from datetime import datetime, timedelta
@@ -17,7 +16,7 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
 
-# In-memory storage for demo purposes (use database in production)
+//In-memory storage for demo purposes (use database in production)
 test_results_storage = {}
 
 
@@ -31,7 +30,7 @@ def home():
 def patient_info():
     """Patient information collection page"""
     if request.method == 'POST':
-        # Store patient info in session
+        //Store patient info in session
         session['patient_info'] = {
             'name': request.form.get('name'),
             'age': request.form.get('age'),
@@ -75,7 +74,7 @@ def delayed_recall():
         session['delayed_recall'] = delayed_recall_text
         return redirect(url_for('results'))
     
-    # Check if delay period has started
+    //Check if delay period has started
     delay_start = session.get('delay_start_time')
     if not delay_start:
         return redirect(url_for('immediate_recall'))
@@ -96,10 +95,10 @@ def results():
     if not immediate_recall or not delayed_recall:
         return redirect(url_for('home'))
     
-    # Perform AI analysis
+    #Perform AI analysis
     analysis = analyze_recall(immediate_recall, delayed_recall)
     
-    # Store results (in production, save to database)
+   
     result_id = datetime.now().timestamp()
     test_results_storage[result_id] = {
         'id': result_id,
@@ -110,7 +109,7 @@ def results():
         'analysis': analysis
     }
     
-    # Store in session for potential download
+    
     session['latest_result_id'] = result_id
     
     return render_template(
