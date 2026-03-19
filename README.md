@@ -69,7 +69,7 @@ gunicorn -w 4 -b 0.0.0.0:5000 app:app
 1. **Patient Information**: Collect basic demographics
 2. **Instructions**: Explain the assessment process
 3. **Listen to Story**: Present a short narrative
-4. **Immediate Recall**: Participant says what they remember
+4. **Immediate Recall**: Participant types what they remember
 5. **3-Minute Delay**: Waiting period
 6. **Delayed Recall**: Participant recalls the story again
 7. **AI Analysis**: System analyzes both responses
@@ -83,7 +83,6 @@ The AI uses multiple metrics:
 - **Semantic Similarity (30%)**: Levenshtein distance algorithm
 - **Coherence (30%)**: Sentence structure and narrative flow
 - **Recall Decay**: Difference between immediate and delayed scores
-- **Voice Analysis (Biomarkers)** - Analyzes the voice of the patient to determine the risk of Alzheimer's (unimplemented) 
 
 Risk levels are categorized as:
 - **Low**: Normal age-related memory
@@ -99,7 +98,7 @@ Risk levels are categorized as:
 
 ## Important Disclaimer
 
-This tool is for **screening purposes only** and does not replace professional medical diagnosis. 
+This tool is for **screening purposes only** and does not replace professional medical diagnosis. Results should be discussed with qualified healthcare providers.
 
 ## Future Enhancements
 

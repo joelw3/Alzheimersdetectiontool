@@ -148,6 +148,24 @@ def dashboard():
         averages=averages
     )
 
+@app.route('/api/speech-to-text', methods=['POST'])
+  def speech_to_text():
+      if 'audio' not in request.files:
+          return jsonify({'error': 'No audio file'}), 400
+      audio_file = request.files['audio']
+      audio_bytes = audio_file.read()
+
+      
+      import openai
+      client = openai.OpenAI(api_key=os.environ['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'])
+      import io
+      transcript = client.audio.transcriptions.create(
+          model= "whisper-1",
+          file=("audio.webm", io.BytesIO(audio_bytes), "audio/webm"),
+          language= "en"
+      )
+      return jsonify({'transcript': transcript.text, 'duration': None})
+
 
 @app.route('/download-report/<float:result_id>')
 def download_report(result_id):

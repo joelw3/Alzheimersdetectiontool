@@ -1,19 +1,51 @@
-import { useState, useRef, useEffect } from "react";
+
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router";
-import { Mic, Clock, ArrowRight, PlayCircle, StopCircle } from "lucide-react";
+import { Mic, ArrowRight, PlayCircle, StopCircle, Loader } from "lucide-react";
 import { DELAY_DURATION_MS } from "../utils/storyData";
+import {
+  createAudioRecorder,
+  transcribeAndAnalyze,
+  type AudioRecorderController,
+} from "../utils/speechPipeline";
+
+// ─── Distractor task data ─────────────────────────────────────────────────────
+// Simple categorization questions. Cognitively lightweight but enough to
+// prevent active story rehearsal. Based on standard clinical delay protocols.
+const DISTRACTOR_QUESTIONS = [
+  { q: "Is a BANANA a fruit or a vegetable?", a: "Fruit", options: ["Fruit", "Vegetable"] },
+  { q: "Is a CAR faster than a bicycle?",    a: "Yes",   options: ["Yes", "No"] },
+  { q: "Does the sun rise in the EAST?",     a: "Yes",   options: ["Yes", "No"] },
+  { q: "Is a WHALE a fish or a mammal?",     a: "Mammal", options: ["Fish", "Mammal"] },
+  { q: "Is SUMMER warmer than WINTER?",      a: "Yes",   options: ["Yes", "No"] },
+  { q: "Is a TOMATO a fruit or a vegetable?",a: "Fruit", options: ["Fruit", "Vegetable"] },
+  { q: "Does a clock move clockwise?",       a: "Yes",   options: ["Yes", "No"] },
+  { q: "Is the MOON closer than the SUN?",   a: "Yes",   options: ["Yes", "No"] },
+];
 
 export function DelayedRecall() {
   const navigate = useNavigate();
-  const [delayComplete, setDelayComplete] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(DELAY_DURATION_MS / 1000);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordedText, setRecordedText] = useState("");
-  const [useTextInput, setUseTextInput] = useState(false);
-  const recognitionRef = useRef<any>(null);
 
+  // ── Delay / distractor state ────────────────────────────────────────────
+  const totalSeconds = Math.floor(DELAY_DURATION_MS / 1000);
+  const [timeRemaining, setTimeRemaining] = useState(totalSeconds);
+  const [delayComplete, setDelayComplete]   = useState(false);
+  const [questionIdx, setQuestionIdx]       = useState(0);
+  const [feedback, setFeedback]             = useState<string | null>(null);
+  const [correctCount, setCorrectCount]     = useState(0);
+
+  // ── Recording state ─────────────────────────────────────────────────────
+  const [isRecording, setIsRecording]       = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [recordedText, setRecordedText]     = useState("");
+  const [useTextInput, setUseTextInput]     = useState(false);
+  const [vuLevel, setVuLevel]               = useState(0);
+
+  const recorderRef   = useRef<AudioRecorderController | null>(null);
+  const vuIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── Countdown timer ─────────────────────────────────────────────────────
   useEffect(() => {
-    // Countdown timer
     const timer = setInterval(() => {
       setTimeRemaining((prev) => {
         if (prev <= 1) {
@@ -24,77 +56,71 @@ export function DelayedRecall() {
         return prev - 1;
       });
     }, 1000);
-
     return () => clearInterval(timer);
   }, []);
 
+  // ── Cleanup VU meter on unmount ─────────────────────────────────────────
   useEffect(() => {
-    if (delayComplete) {
-      // Initialize speech recognition when delay is complete
-      if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
-        const SpeechRecognition =
-          (window as any).SpeechRecognition ||
-          (window as any).webkitSpeechRecognition;
-        recognitionRef.current = new SpeechRecognition();
-        recognitionRef.current.continuous = true;
-        recognitionRef.current.interimResults = true;
-        recognitionRef.current.lang = "en-US";
-
-        recognitionRef.current.onresult = (event: any) => {
-          let finalTranscript = "";
-
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-            if (event.results[i].isFinal) {
-              finalTranscript += transcript + " ";
-            }
-          }
-
-          setRecordedText((prev) => prev + finalTranscript);
-        };
-
-        recognitionRef.current.onerror = (event: any) => {
-          console.error("Speech recognition error:", event.error);
-          if (event.error === "not-allowed") {
-            setUseTextInput(true);
-          }
-          setIsRecording(false);
-        };
-
-        recognitionRef.current.onend = () => {
-          setIsRecording(false);
-        };
-      } else {
-        setUseTextInput(true);
-      }
-    }
-
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-      }
+      if (vuIntervalRef.current) clearInterval(vuIntervalRef.current);
     };
-  }, [delayComplete]);
+  }, []);
 
-  const startRecording = async () => {
+  // ── Distractor answer handler ───────────────────────────────────────────
+  const handleAnswer = (chosen: string) => {
+    const current = DISTRACTOR_QUESTIONS[questionIdx];
+    if (chosen === current.a) {
+      setFeedback("Correct!");
+      setCorrectCount((c) => c + 1);
+    } else {
+      setFeedback(`Not quite — the answer is ${current.a}.`);
+    }
+    // Advance to next question after 800 ms
+    setTimeout(() => {
+      setFeedback(null);
+      setQuestionIdx((i) => (i + 1) % DISTRACTOR_QUESTIONS.length);
+    }, 800);
+  };
+
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    return `${m}:${(s % 60).toString().padStart(2, "0")}`;
+  };
+
+  // ── Recording helpers ───────────────────────────────────────────────────
+  const startRecording = useCallback(async () => {
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (recognitionRef.current) {
-        recognitionRef.current.start();
-        setIsRecording(true);
-      }
-    } catch (err) {
-      console.error("Microphone permission denied:", err);
+      recorderRef.current = createAudioRecorder();
+      await recorderRef.current.start();
+      setIsRecording(true);
+      vuIntervalRef.current = setInterval(() => {
+        setVuLevel(recorderRef.current?.getLevel() ?? 0);
+      }, 33);
+    } catch {
       setUseTextInput(true);
     }
-  };
+  }, []);
 
-  const stopRecording = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
+  const stopRecording = useCallback(async () => {
+    if (!recorderRef.current) return;
+    if (vuIntervalRef.current) clearInterval(vuIntervalRef.current);
+    setVuLevel(0);
+    setIsRecording(false);
+    setIsTranscribing(true);
+    try {
+      const blob = await recorderRef.current.stop();
+      const result = await transcribeAndAnalyze(blob);
+      setRecordedText(result.transcription.transcript);
+      sessionStorage.setItem(
+        "delayedAcoustics",
+        JSON.stringify(result.acousticFeatures)
+      );
+    } catch {
+      setUseTextInput(true);
+    } finally {
+      setIsTranscribing(false);
     }
-  };
+  }, []);
 
   const handleContinue = () => {
     if (recordedText.trim()) {
@@ -103,73 +129,113 @@ export function DelayedRecall() {
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
+  // ── DISTRACTOR / WAITING SCREEN ─────────────────────────────────────────
   if (!delayComplete) {
+    const current = DISTRACTOR_QUESTIONS[questionIdx];
+    const progressPct = Math.round(
+      ((totalSeconds - timeRemaining) / totalSeconds) * 100
+    );
+
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-3xl w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12 text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-purple-100 rounded-full mb-6">
-            <Clock className="w-12 h-12 text-purple-600" />
-          </div>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Brief Waiting Period
+        <div className="max-w-2xl w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12 text-center">
+
+          {/* Header */}
+          <h1 className="text-4xl font-bold text-gray-900 mb-2">
+            Short Activity Break
           </h1>
-          <p className="text-xl text-gray-600 mb-8">
-            Please wait while we prepare the next phase
+          <p className="text-xl text-gray-600 mb-6">
+            Answer a few easy questions while you wait
           </p>
 
-          <div className="bg-gradient-to-br from-purple-100 to-indigo-100 p-12 rounded-2xl mb-8">
-            <div className="text-8xl font-bold text-purple-600 mb-4">
-              {formatTime(timeRemaining)}
+          {/* Progress bar + timer */}
+          <div className="mb-6">
+            <div
+              className="w-full h-4 bg-gray-200 rounded-full overflow-hidden mb-2"
+              role="progressbar"
+              aria-valuenow={progressPct}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-label="Delay period progress"
+            >
+              <div
+                className="h-full bg-purple-500 rounded-full transition-all duration-1000"
+                style={{ width: `${progressPct}%` }}
+              />
             </div>
-            <p className="text-2xl text-purple-800 font-medium">
-              Time Remaining
+            <p
+              className="text-2xl font-bold text-purple-700"
+              aria-live="off"  /* avoid constant announcements */
+            >
+              {formatTime(timeRemaining)} remaining
             </p>
           </div>
 
-          <div className="bg-blue-50 border-2 border-blue-200 p-6 rounded-xl">
-            <h3 className="text-xl font-bold text-blue-900 mb-3">
-              During This Time
-            </h3>
-            <ul className="space-y-2 text-lg text-blue-800">
-              <li className="flex items-start">
-                <span className="mr-2">•</span>
-                <span>Stay on this page</span>
-              </li>
-              <li className="flex items-start">
-                <span className="mr-2">•</span>
-                <span>Try to relax and clear your mind</span>
-              </li>
-              <li className="flex items-start">
-                <span className="mr-2">•</span>
-                <span>
-                  Do NOT try to rehearse or think about the story
-                </span>
-              </li>
-              <li className="flex items-start">
-                <span className="mr-2">•</span>
-                <span>You'll be prompted when the time is up</span>
-              </li>
-            </ul>
+          {/* Distractor question card */}
+          <div className="bg-purple-50 border-2 border-purple-200 rounded-2xl p-8 mb-6">
+            <p className="text-2xl font-semibold text-gray-900 mb-8 leading-snug">
+              {current.q}
+            </p>
+
+            {/* Answer buttons — ACCESSIBILITY: min-h-[64px], text-2xl */}
+            <div className="flex gap-4 justify-center flex-wrap">
+              {current.options.map((opt) => (
+                <button
+                  key={opt}
+                  onClick={() => handleAnswer(opt)}
+                  disabled={!!feedback}
+                  aria-label={`Answer: ${opt}`}
+                  className="bg-white border-2 border-purple-300 hover:bg-purple-100
+                             hover:border-purple-500 text-gray-900 font-bold text-2xl
+                             px-10 py-4 rounded-xl transition-all min-h-[64px]
+                             disabled:opacity-50"
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+
+            {/* Feedback */}
+            {feedback && (
+              <p
+                className={`mt-6 text-2xl font-bold ${
+                  feedback === "Correct!" ? "text-green-700" : "text-orange-700"
+                }`}
+                role="alert"
+              >
+                {feedback}
+              </p>
+            )}
+          </div>
+
+          <p className="text-xl text-gray-500">
+            Answered correctly: {correctCount} so far
+          </p>
+
+          <div
+            className="mt-6 bg-amber-50 border border-amber-200 p-4 rounded-xl text-left"
+            role="note"
+          >
+            <p className="text-lg text-amber-800 font-medium">
+              Please stay on this page. The recall test will start automatically
+              when the timer reaches zero.
+            </p>
           </div>
         </div>
       </div>
     );
   }
 
+  // ── DELAYED RECALL RECORDING SCREEN ────────────────────────────────────
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="max-w-4xl w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12">
+      <div className="max-w-3xl w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12">
+
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-100 rounded-full mb-4">
-            <Mic className="w-10 h-10 text-orange-600" />
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-orange-100 rounded-full mb-4">
+            <Mic className="w-12 h-12 text-orange-600" aria-hidden="true" />
           </div>
-          <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-2">
+          <h1 className="text-4xl font-bold text-gray-900 mb-3">
             Delayed Recall
           </h1>
           <p className="text-xl text-gray-600">
@@ -178,92 +244,139 @@ export function DelayedRecall() {
         </div>
 
         <div className="bg-orange-50 border-2 border-orange-200 p-6 rounded-xl mb-8">
-          <p className="text-lg text-orange-900 font-medium text-center">
-            Please retell the story again, recalling as much as you can. It's
-            normal to remember less than the first time - just do your best.
+          <p className="text-xl text-orange-900 font-medium text-center leading-relaxed">
+            Please retell the story again, recalling as much as you can. It is
+            normal to remember a little less than the first time — just do your
+            best.
           </p>
         </div>
 
         <div className="space-y-6 mb-8">
           {!useTextInput && (
             <div className="text-center">
-              {!isRecording ? (
+              {/* Recording button — ACCESSIBILITY: color + label both change */}
+              {!isRecording && !isTranscribing ? (
                 <button
                   onClick={startRecording}
-                  className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-2xl py-6 px-12 rounded-xl flex items-center justify-center mx-auto transition-all shadow-lg hover:shadow-xl"
+                  aria-label="Start recording your story recall"
+                  className="bg-orange-600 hover:bg-orange-700 active:bg-orange-800
+                             text-white font-bold text-2xl py-5 px-14 rounded-xl
+                             flex items-center justify-center mx-auto
+                             transition-all shadow-lg min-h-[64px]"
                 >
-                  <PlayCircle className="mr-3 w-8 h-8" />
+                  <PlayCircle className="mr-3 w-8 h-8" aria-hidden="true" />
                   Start Recording
+                </button>
+              ) : isTranscribing ? (
+                <button
+                  disabled
+                  aria-label="Transcribing your recording, please wait"
+                  className="bg-blue-500 text-white font-bold text-2xl py-5 px-14
+                             rounded-xl flex items-center justify-center mx-auto
+                             shadow-lg min-h-[64px] cursor-wait"
+                >
+                  <Loader className="mr-3 w-8 h-8 animate-spin" aria-hidden="true" />
+                  Transcribing...
                 </button>
               ) : (
                 <button
                   onClick={stopRecording}
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold text-2xl py-6 px-12 rounded-xl flex items-center justify-center mx-auto transition-all shadow-lg hover:shadow-xl animate-pulse"
+                  aria-label="Stop recording — currently recording"
+                  className="bg-red-600 hover:bg-red-700 active:bg-red-800
+                             text-white font-bold text-2xl py-5 px-14 rounded-xl
+                             flex items-center justify-center mx-auto
+                             transition-all shadow-lg min-h-[64px]"
                 >
-                  <StopCircle className="mr-3 w-8 h-8" />
+                  <StopCircle className="mr-3 w-8 h-8" aria-hidden="true" />
                   Stop Recording
                 </button>
               )}
 
+              {/* Status text + VU meter */}
               {isRecording && (
-                <div className="mt-4 flex items-center justify-center space-x-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
-                  <p className="text-lg text-gray-700 font-medium">
-                    Recording in progress...
+                <div className="mt-5 flex flex-col items-center gap-3" role="status" aria-live="polite">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse" />
+                    <p className="text-xl text-red-700 font-semibold">
+                      Recording is active — speak now
+                    </p>
+                  </div>
+                  <div
+                    className="w-64 h-4 bg-gray-200 rounded-full overflow-hidden"
+                    role="meter"
+                    aria-valuenow={Math.round(vuLevel * 100)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-label={`Microphone level: ${Math.round(vuLevel * 100)}%`}
+                  >
+                    <div
+                      className="h-full rounded-full transition-all duration-75"
+                      style={{
+                        width: `${Math.round(vuLevel * 100)}%`,
+                        background: vuLevel > 0.8 ? "#dc2626" : vuLevel > 0.4 ? "#16a34a" : "#d97706",
+                      }}
+                    />
+                  </div>
+                  <p className="text-lg text-gray-500">
+                    Microphone level — green means your voice is being captured
                   </p>
                 </div>
               )}
 
               <button
                 onClick={() => setUseTextInput(true)}
-                className="mt-4 text-indigo-600 hover:text-indigo-800 font-medium text-lg underline"
+                className="mt-6 text-indigo-700 hover:text-indigo-900 font-medium text-xl underline min-h-[48px]"
               >
-                Or type your response instead
+                Switch to typing instead
               </button>
             </div>
           )}
 
+          {/* Transcript textarea */}
           <div>
-            <label
-              htmlFor="recall"
-              className="block text-xl font-semibold text-gray-700 mb-3"
-            >
+            <label htmlFor="recall" className="block text-xl font-semibold text-gray-700 mb-3">
               {useTextInput ? "Type Your Response:" : "Your Response:"}
             </label>
             <textarea
               id="recall"
               value={recordedText}
               onChange={(e) => setRecordedText(e.target.value)}
-              className="w-full px-5 py-4 text-lg border-2 border-gray-300 rounded-lg focus:border-indigo-500 focus:outline-none min-h-[300px]"
+              className="w-full px-5 py-4 text-xl border-2 border-gray-300 rounded-xl
+                         focus:border-indigo-500 focus:outline-none min-h-[280px] leading-relaxed"
               placeholder={
                 useTextInput
                   ? "Type what you remember from the story..."
-                  : "Your spoken words will appear here..."
+                  : "Your spoken words will appear here after recording stops..."
               }
               readOnly={!useTextInput && isRecording}
+              aria-label="Story recall response"
             />
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-lg text-gray-500">
               Word count: {recordedText.split(/\s+/).filter(Boolean).length}
             </p>
           </div>
         </div>
 
+        {/* Continue */}
         <button
           onClick={handleContinue}
           disabled={recordedText.trim().length < 10}
-          className={`w-full font-bold text-xl py-6 px-8 rounded-xl flex items-center justify-center transition-all shadow-lg ${
-            recordedText.trim().length >= 10
-              ? "bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-xl"
-              : "bg-gray-300 text-gray-500 cursor-not-allowed"
-          }`}
+          className={`w-full font-bold text-2xl py-5 px-8 rounded-xl
+                      flex items-center justify-center transition-all shadow-lg min-h-[64px]
+                      ${
+                        recordedText.trim().length >= 10
+                          ? "bg-indigo-600 hover:bg-indigo-700 text-white hover:shadow-xl"
+                          : "bg-gray-300 text-gray-500 cursor-not-allowed"
+                      }`}
+          aria-disabled={recordedText.trim().length < 10}
         >
           View Results
-          <ArrowRight className="ml-3 w-7 h-7" />
+          <ArrowRight className="ml-3 w-7 h-7" aria-hidden="true" />
         </button>
 
         {recordedText.trim().length < 10 && (
-          <p className="text-center text-gray-500 mt-4 text-lg">
-            Please provide a response to continue
+          <p className="text-center text-gray-500 mt-4 text-xl" role="status" aria-live="polite">
+            Please provide a response before continuing
           </p>
         )}
       </div>
