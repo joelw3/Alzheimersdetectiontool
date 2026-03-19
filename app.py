@@ -157,7 +157,7 @@ def dashboard():
 
       
       import openai
-      client = openai.OpenAI(api_key=os.environ['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'])
+      client = openai.OpenAI(api_key=os.environ['placeholder')
       import io
       transcript = client.audio.transcriptions.create(
           model= "whisper-1",
