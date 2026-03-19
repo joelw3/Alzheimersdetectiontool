@@ -1,247 +1,115 @@
 /**
- * ML INTEGRATION GUIDE FOR ALZHEIMER'S EARLY DETECTION SYSTEM
- * ==============================================================
- * 
- * CURRENT IMPLEMENTATION:
- * -----------------------
- * The current system uses rule-based NLP algorithms for analysis:
- * 
- * 1. Levenshtein Distance Algorithm
- *    - Calculates semantic similarity between original story and recall
- *    - Measures edit distance to determine how closely the recall matches
- * 
- * 2. Key Point Extraction
- *    - Identifies 14 critical story elements (names, objects, actions)
- *    - Tracks which elements are recalled vs. missed
- * 
- * 3. Coherence Scoring
- *    - Evaluates sentence structure and narrative flow
- *    - Checks for proper length and multi-sentence responses
- * 
- * 4. Multi-Factor Scoring
- *    - 40%: Key point retention
- *    - 30%: Semantic similarity
- *    - 30%: Coherence
- * 
- * 5. Risk Stratification
- *    - Categorizes into Low/Moderate/High risk based on thresholds
- *    - Considers both absolute scores and recall decay
- * 
- * 
- * RECOMMENDED ML ENHANCEMENTS:
- * ----------------------------
- * 
- * Phase 1: Advanced NLP Models
- * 
- * 1. Transformer-Based Semantic Analysis (BERT/RoBERTa)
- *    - Use pre-trained models for better semantic understanding
- *    - Implementation:
- *      ```
- *      import { pipeline } from '@xenova/transformers';
- *      const extractor = await pipeline('feature-extraction', 'sentence-transformers/all-MiniLM-L6-v2');
- *      const embeddings = await extractor(text);
- *      ```
- *    - Provides more nuanced similarity scoring than Levenshtein
- * 
- * 2. Named Entity Recognition (NER)
- *    - Better identification of key story elements
- *    - Automatically extracts people, places, objects, actions
- *    - Implementation with spaCy or Hugging Face models
- * 
- * 3. Sentiment & Emotional Analysis
- *    - Detect emotional content changes between recalls
- *    - May indicate confabulation or false memory insertion
- * 
- * 
- * Phase 2: Speech-to-Text Enhancement
- * 
- * 1. Advanced Speech Recognition (Whisper, Google Speech-to-Text)
- *    - More accurate transcription reduces analysis errors
- *    - Captures speech patterns like hesitations, pauses
- *    - Implementation:
- *      ```
- *      import { WhisperModel } from '@xenova/transformers';
- *      const model = await WhisperModel.from_pretrained('openai/whisper-tiny');
- *      const transcript = await model.transcribe(audioBlob);
- *      ```
- * 
- * 2. Prosody Analysis
- *    - Analyze speech rate, pitch variations, pauses
- *    - Important indicators of cognitive processing
- *    - Requires audio signal processing libraries
- * 
- * 
- * Phase 3: Custom ML Models
- * 
- * 1. Binary Classification Model
- *    - Train on validated clinical datasets (e.g., DementiaBank corpus)
- *    - Input features:
- *      * Word count, sentence count
- *      * Unique word ratio
- *      * Semantic coherence score
- *      * Key point recall percentage
- *      * Recall decay rate
- *      * Speech rate and pause patterns
- *    - Output: Risk probability (0-1)
- *    - Model architecture: Gradient Boosting (XGBoost) or Neural Network
- * 
- * 2. Time Series Analysis
- *    - Track changes over multiple assessments
- *    - Identify declining trends
- *    - LSTM or GRU networks for sequence modeling
- * 
- * 3. Multi-Task Learning
- *    - Simultaneously predict:
- *      * Alzheimer's risk
- *      * MCI (Mild Cognitive Impairment) likelihood
- *      * Cognitive domain deficits
- *    - Shared feature extraction with task-specific heads
- * 
- * 
- * Phase 4: Advanced Features
- * 
- * 1. Ensemble Methods
- *    - Combine multiple models for robust predictions
- *    - Rule-based + Transformer-based + Custom ML
- *    - Weighted voting or stacking
- * 
- * 2. Explainable AI (XAI)
- *    - LIME or SHAP for model interpretability
- *    - Show which features contributed to risk assessment
- *    - Critical for clinical trust and adoption
- * 
- * 3. Active Learning
- *    - Continuously improve with clinician feedback
- *    - Flag uncertain cases for expert review
- *    - Update model with validated results
- * 
- * 
- * RECOMMENDED DATASETS:
- * ---------------------
- * 
- * 1. DementiaBank Corpus (Pitt Corpus)
- *    - Cookie Theft picture description task
- *    - Gold standard for Alzheimer's speech research
- *    - Contains transcripts from healthy controls and AD patients
- * 
- * 2. ADReSS Challenge Dataset
- *    - Alzheimer's Dementia Recognition through Spontaneous Speech
- *    - Balanced dataset with audio and transcripts
- * 
- * 3. Framingham Heart Study Cognitive Data
- *    - Longitudinal cognitive assessment data
- * 
- * 
- * INTEGRATION EXAMPLE (BERT Similarity):
- * ---------------------------------------
- * 
- * ```typescript
- * import { pipeline } from '@xenova/transformers';
- * 
- * async function calculateSemanticSimilarity(
- *   originalStory: string,
- *   recalledStory: string
- * ): Promise<number> {
- *   const embedder = await pipeline(
- *     'feature-extraction',
- *     'sentence-transformers/all-MiniLM-L6-v2'
- *   );
- *   
- *   const [originalEmbedding] = await embedder(originalStory);
- *   const [recalledEmbedding] = await embedder(recalledStory);
- *   
- *   // Calculate cosine similarity
- *   const dotProduct = originalEmbedding.reduce(
- *     (sum: number, val: number, i: number) => 
- *       sum + val * recalledEmbedding[i],
- *     0
- *   );
- *   
- *   const magnitudeA = Math.sqrt(
- *     originalEmbedding.reduce((sum: number, val: number) => sum + val * val, 0)
- *   );
- *   const magnitudeB = Math.sqrt(
- *     recalledEmbedding.reduce((sum: number, val: number) => sum + val * val, 0)
- *   );
- *   
- *   const cosineSimilarity = dotProduct / (magnitudeA * magnitudeB);
- *   return cosineSimilarity * 100; // Convert to percentage
- * }
- * ```
- * 
- * 
- * PERFORMANCE METRICS TO TRACK:
- * ------------------------------
- * 
- * 1. Sensitivity (True Positive Rate)
- *    - Percentage of actual AD cases correctly identified
- *    - Target: >85% for screening tool
- * 
- * 2. Specificity (True Negative Rate)
- *    - Percentage of healthy individuals correctly identified
- *    - Target: >80% to minimize false alarms
- * 
- * 3. Area Under ROC Curve (AUC-ROC)
- *    - Overall model discrimination ability
- *    - Target: >0.90 for clinical deployment
- * 
- * 4. Positive Predictive Value (PPV)
- *    - Probability that positive prediction is correct
- *    - Depends on disease prevalence in population
- * 
- * 
- * ETHICAL & REGULATORY CONSIDERATIONS:
- * -------------------------------------
- * 
- * 1. FDA Clearance
- *    - If used for diagnosis: Class II medical device
- *    - Requires clinical validation studies
- * 
- * 2. HIPAA Compliance
- *    - Secure storage of PHI
- *    - Encrypted data transmission
- *    - Audit logging
- * 
- * 3. Bias Mitigation
- *    - Test across diverse populations
- *    - Account for education, language, cultural factors
- *    - Avoid algorithmic bias
- * 
- * 4. Transparency
- *    - Clear communication of limitations
- *    - Not a replacement for clinical diagnosis
- *    - Results should prompt professional consultation
- * 
- * 
- * NEXT STEPS FOR IMPLEMENTATION:
- * -------------------------------
- * 
- * 1. Short-term (1-3 months)
- *    - Integrate Transformers.js for BERT-based similarity
- *    - Improve speech-to-text with Whisper
- *    - Add more sophisticated coherence metrics
- * 
- * 2. Medium-term (3-6 months)
- *    - Collect pilot data with IRB approval
- *    - Train custom classification model
- *    - Implement explainable AI features
- * 
- * 3. Long-term (6-12 months)
- *    - Clinical validation study
- *    - Ensemble model deployment
- *    - Longitudinal tracking and trend analysis
- *    - Seek regulatory approval if applicable
+ * mlIntegrationGuide.ts
+ * FILE: src/app/utils/mlIntegrationGuide.ts
+ *
+ * A living reference document describing what has been implemented,
+ * what is a placeholder pending real data, and what is planned.
+ *
+ * CURRENT STATUS (as of this version):
+ *   ✅ Levenshtein-based text similarity
+ *   ✅ Multi-keyword + fuzzy key-point matching (first-word bug fixed)
+ *   ✅ Rule-based risk classification (WMS-IV norms, replaces Decision Tree)
+ *   ✅ MediaRecorder blob pipeline replacing webkitSpeechRecognition
+ *   ✅ Whisper transcription via /api/speech-to-text
+ *   ✅ Lexical diversity (TTR) and words-per-minute from transcript
+ *   ✅ XGBoost inference endpoint (supabase/functions/server/xgboost_model.tsx)
+ *      — currently running a weighted heuristic pending a real trained model
+ *   🔲 Pause count and mean pause duration (requires /api/acoustic-features)
+ *   🔲 Speech rate from audio (requires phoneme segmentation backend)
+ *   🔲 XGBoost model trained on real patient data (DementiaBank / ADNI)
+ *   🔲 Longitudinal trend analysis across multiple sessions
  */
 
+// ─── What still needs a real dataset ─────────────────────────────────────────
+//
+// The XGBoost model in supabase/functions/server/xgboost_model.tsx currently
+// uses a weighted heuristic (predictWithHeuristic) rather than a trained model.
+// This will be replaced once a validated dataset is obtained.
+//
+// Recommended data sources:
+//   1. DementiaBank Pitt Corpus      — https://dementia.talkbank.org/
+//      Story recall + connected speech; 551 participants; requires DUA
+//   2. ADNI                          — https://adni.loni.usc.edu/
+//      Longitudinal cognitive scores; free with registration
+//   3. ADReSS Challenge Dataset      — balanced audio + transcripts
+//   4. PREVENT-AD                    — https://prevent-alzheimer.net/
+//      Pre-symptomatic cohort with speech and cognitive measures
+//
+// When a dataset is available:
+//   1. Run ml_training/train_xgboost.py with --data-path ./data/real_dataset.csv
+//   2. The script outputs xgboost_model.json and scaler_params.json
+//   3. Load xgboost_model.json in xgboost_model.tsx, replacing predictWithHeuristic
+//   4. Update the imputation defaults in imputeMissingFeatures() to match the
+//      real dataset medians printed by the training script
+
+// ─── Acoustic features still needed ──────────────────────────────────────────
+//
+// speechPipeline.ts currently computes:
+//   - lexicalDiversity (TTR) from transcript text — implemented
+//   - wordsPerMinute from transcript + audio duration — implemented
+//
+// Still requiring a backend audio-analysis endpoint (/api/acoustic-features):
+//   - pauseCount (pauses > 0.25 s) — use webrtcvad or Parselmouth in Python
+//   - meanPauseDuration             — same
+//   - speechRate (syllables/sec)   — requires phoneme segmentation (Montreal Forced Aligner)
+//
+// These three features feed directly into the XGBoost model. The model's
+// imputeMissingFeatures() function fills them with training-set medians until
+// the backend endpoint is implemented, so the system degrades gracefully.
+
+// ─── Future enhancements ──────────────────────────────────────────────────────
+//
+// Phase 1 — Improve semantic scoring
+//   Replace Levenshtein similarity with sentence embeddings for better handling
+//   of paraphrases. Candidate: sentence-transformers/all-MiniLM-L6-v2 via
+//   @xenova/transformers (runs in-browser, no additional backend needed).
+//
+//   Example:
+//     import { pipeline } from '@xenova/transformers';
+//     const embed = await pipeline('feature-extraction', 'sentence-transformers/all-MiniLM-L6-v2');
+//     const [a] = await embed(originalStory);
+//     const [b] = await embed(recalledStory);
+//     const cosine = dotProduct(a, b) / (magnitude(a) * magnitude(b));
+//
+// Phase 2 — Named Entity Recognition
+//   Automatically extract and score person names, locations, and objects
+//   from the recalled text instead of relying on the fixed STORY_KEY_POINTS list.
+//   Candidate: spaCy (Python backend) or wink-nlp (browser-side).
+//
+// Phase 3 — Longitudinal tracking
+//   The dashboard currently shows individual session scores. Adding a trend
+//   line across sessions (e.g. delayed-recall score over time per patient)
+//   would provide a stronger clinical signal than any single test.
+//   A score decline of > 10 points over 6 months is a clinically significant
+//   finding independent of absolute score level.
+//
+// Phase 4 — Explainable AI
+//   Add SHAP values from the XGBoost model to the results page so clinicians
+//   can see which features drove the risk classification. xgboost supports
+//   SHAP natively via model.get_booster().predict(data, pred_contribs=True).
+
+// ─── Regulatory and ethical notes ────────────────────────────────────────────
+//
+// - This tool is a screening aid, not a diagnostic device. All results pages
+//   and downloaded reports include a disclaimer to this effect.
+// - If used beyond internal research, FDA Class II device classification may
+//   apply. Clinical validation studies would be required.
+// - Patient data must be handled in compliance with HIPAA (US) or PIPEDA (CA).
+//   The current in-memory storage in app.py is for development only and must
+//   be replaced with an encrypted, access-controlled database before deployment.
+// - Test across diverse populations (education level, primary language, cultural
+//   background) before clinical deployment to avoid algorithmic bias.
+
 export const ML_INTEGRATION_STATUS = {
-  currentApproach: "Rule-based NLP with Levenshtein distance",
-  recommendedEnhancements: [
-    "Transformer-based semantic analysis (BERT/RoBERTa)",
-    "Advanced speech-to-text (Whisper)",
-    "Custom ML classifier trained on clinical data",
-    "Ensemble methods for robust predictions",
-    "Explainable AI for clinical trust",
-  ],
+  currentApproach: "Rule-based NLP (Levenshtein + fuzzy key-point matching) with XGBoost heuristic",
+  xgboostModelState: "Heuristic placeholder — replace predictWithHeuristic() once real model trained",
+  acousticFeaturesState: "TTR and WPM implemented; pauseCount/speechRate pending /api/acoustic-features endpoint",
   readyForProduction: false,
-  nextStep: "Integrate Transformers.js for semantic similarity",
-};
+  nextSteps: [
+    "Obtain DementiaBank or ADNI dataset and run ml_training/train_xgboost.py",
+    "Implement /api/acoustic-features endpoint using webrtcvad or Parselmouth",
+    "Replace predictWithHeuristic() in xgboost_model.tsx with loaded JSON model",
+    "Add sentence-embedding similarity to replace Levenshtein (Phase 1)",
+    "Implement longitudinal trend chart in Dashboard (Phase 3)",
+  ],
+} as const;
